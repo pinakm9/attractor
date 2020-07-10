@@ -1,12 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import tables
+import utility as ut
 
 # the Henon map
 def henon(x, a = 1.4, b = 0.3):
     return np.array([1.0  - a*x[0]**2 + x[1], b*x[0]])
 
 # generates a trajectory
+@ut.timer
 def gen_path(func, start, length, dimension, **params):
     path = np.zeros((dimension, length))
     x = start
@@ -42,40 +44,37 @@ def init_database(db_path):
     hdf5.close()
 
 # addes a new trajectory in the attractor database
+@ut.timer
 def add_new_path(db_path, path_index, func, start, length, dimension, chunk_size, **params):
-    class PathDescription(tables.IsDescription):
-        ...
-
+    path_description = {}
     for i in range(dimension):
-        var = 'x' + str(i)
-        setattr(PathDescription, var, tables.Float32Col(pos = i))
-    hdf5 = tables.open_file('db_path', 'a')
-    trajectory = hdf5.create_table('/trajectories', 'trajectory_' + str(path_index), PathDescription)
-    row = trajectory.row()
-    for i in range(length/chunk_size):
+        path_description['x' + str(i)] = tables.Float32Col(pos = i)
+    hdf5 = tables.open_file(db_path, 'a')
+    trajectory = hdf5.create_table(hdf5.root.trajectories, 'trajectory_' + str(path_index), path_description)
+    for i in range(int(length/chunk_size)):
         path = gen_path(func, start, length, dimension, **params)
-        for j in range(chunk_size):
-            for d in range(dimension):
-                row['x' + str(d)] = path[d][j]
-            row.append()
+        trajectory.append(path.T)
         trajectory.flush()
         start = path[:, -1]
+        print('Chunk #{} has been written.'.format(i))
     hdf5.close()
 
 # adds to an existing trajectory in the attractor database
-def add_to_path(db_path, path_index, func, length, dimension, **params):
-    hdf5 = tables.open_file('db_path', 'a')
+@ut.timer
+def add_to_path(db_path, path_index, func, length, dimension, chunk_size, **params):
+    hdf5 = tables.open_file(db_path, 'a')
     trajectory = getattr(hdf5.root.trajectories, 'trajectory_' + str(path_index))
-    row = trajectory.row()
-    start = np.array(trajectory[-1].fetch_all_field(), dtype = 'float32')
-    for i in range(length/chunk_size):
+    start = np.array(list(trajectory[-1]), dtype = 'float32')
+    for i in range(int(length/chunk_size)):
         path = gen_path(func, start, length, dimension, **params)
-        for j in range(chunk_size):
-            for d in range(dimension):
-                row['x' + str(d)] = path[d][j]
-            row.append()
+        trajectory.append(path.T)
         trajectory.flush()
         start = path[:, -1]
+        print('Chunk #{} has been written.'.format(i))
     hdf5.close()
 
 init_database('../data/henon_attractor.h5')
+add_new_path(db_path = '../data/henon_attractor.h5', path_index = 0, func = henon, start = [0.13916694, -0.27812755], length = int(8e6), dimension = 2, chunk_size = int(1e4), a = 1.4, b = 0.3)
+#add_to_path(db_path = '../data/henon_attractor.h5', path_index = 0, func = henon, length = int(8e6), dimension = 2, chunk_size = int(1e4), a = 1.4, b = 0.3)
+#hdf5 = tables.open_file('../data/henon_attractor.h5', 'a')
+#print(hdf5.root.trajectories.trajectory_0.__len__())
