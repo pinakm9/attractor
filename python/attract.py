@@ -17,9 +17,11 @@ class AttractorDB:
         dim: dimension of the dynamical system
         params: dict of keyword arguments for the dynamical function
         num_paths: current number of trajectories in the database
+        point_description: description of an attractor point as a hdf5 row
 
     Methods:
         gen_path: generates a new trajectory
+        add_new_pts: addes new points to the database
         add_new_paths: adds new trajectories of equal length to the database
         add_to_path: extends an already existing trajectory in the database
         burn_in: moves a point forward in time for a long enough period for it to reach the attractor
@@ -35,9 +37,19 @@ class AttractorDB:
             **params: dict of keyword arguments for the dynamical function
         """
         # initializes database to store attractor data
+        self.db_path = db_path
+        self.func = func
+        self.dim = dim
+        self.params = params
+        self.point_description = {}
+        for i in range(self.dim):
+            self.point_description['x' + str(i)] = tables.Float64Col(pos = i)
+
         if not os.path.isfile(db_path):
             hdf5 = tables.open_file(db_path, 'w')
             trajectories = hdf5.create_group('/', 'trajectories')
+            points = hdf5.create_table(hdf5.root, 'points', self.point_description)
+            points.flush()
             self.num_paths = 0
             hdf5.close()
         else:
@@ -47,10 +59,7 @@ class AttractorDB:
             self.num_paths = max(idx) if len(idx) > 0 else 0
             hdf5.close()
 
-        self.db_path = db_path
-        self.func = func
-        self.dim = dim
-        self.params = params
+
 
     @ut.timer
     def gen_path(self, start, length):
@@ -107,7 +116,7 @@ class AttractorDB:
 
 
     @ut.timer
-    def add_new_paths(self, num_paths=1, start='random', length=int(1e3), chunk_size=None):
+    def add_new_paths(self, num_paths=1, start='random', length=int(1e3), chunk_size=None, burn_in_period=int(1e5), mean=None, cov=0.001):
         """
         Description:
             Adds new trajectories of same length to the database
@@ -122,23 +131,19 @@ class AttractorDB:
             elif chunk_size is None:
                 chunk_size = int(1e4)
         """
-        path_description = {}
-        for i in range(self.dim):
-            path_description['x' + str(i)] = tables.Float64Col(pos = i)
         hdf5 = tables.open_file(self.db_path, 'a')
         if length < 1e4:
             chunk_size = length
         elif chunk_size is None:
             chunk_size = int(1e4)
         if start is 'random':
-            start = [self.burn_in() for i in range(num_paths)]
-            #print(start)
+            start = [self.burn_in(burn_in_period = burn_in_period, mean = mean, cov = cov) for i in range(num_paths)]
         for i in range(num_paths):
             self.num_paths += 1
-            trajectory = hdf5.create_table(hdf5.root.trajectories, 'trajectory_' + str(self.num_paths), path_description)
+            trajectory = hdf5.create_table(hdf5.root.trajectories, 'trajectory_' + str(self.num_paths), self.point_description)
             origin = start[i]
             for i in range(int(length/chunk_size)):
-                path = self.gen_path(origin, length)
+                path = self.gen_path(origin, chunk_size)
                 trajectory.append(path.T)
                 trajectory.flush()
                 origin = path[:, -1]
@@ -176,6 +181,36 @@ class AttractorDB:
         hdf5.close()
 
 
+    @ut.timer
+    def add_new_pts(self, num_pts=int(1e3), reset=None, burn_in_period=int(1e5), mean=None, cov=0.001):
+        """
+        num_pts: number of new points to be added, default=int(1e3)
+        reset: number of points before the starting point resets, default = None, behaves as,
+        if num_pts < 1e3:
+            reset = num_pts
+        elif reset is None:
+            reset = int(1e3)
+        """
+        hdf5 = tables.open_file(self.db_path, 'a')
+        points = getattr(hdf5.root, 'points')
+        if num_pts < 1e3:
+            reset = num_pts
+        elif reset is None:
+            reset = int(1e3)
+        for i in range(int(num_pts/reset)):
+            start = self.burn_in(burn_in_period = burn_in_period, mean = mean, cov = cov)
+            path = self.gen_path(start, reset)
+            points.append(path.T)
+            points.flush()
+            print('Chunk #{} has been written.'.format(i))
+        hdf5.close()
+
+    @ut.timer
+    def collect_seeds(self, num_seeds=int(1e3)):
+        pass
+
+
+
     def plot_path2D(self, path_index, show=True, saveas=None):
         """
         Description:
@@ -189,7 +224,7 @@ class AttractorDB:
         Returns:
             ax of the generated plot
         """
-        plt.figure(figsize=(8,8))
+        plt.figure(figsize = (8,8))
         ax = plt.subplot(111)
         hdf5 = tables.open_file(self.db_path, 'a')
         trajectory = np.array(getattr(hdf5.root.trajectories, 'trajectory_' + str(path_index)).read().tolist(), dtype = 'float64')
