@@ -10,5 +10,5 @@ henon_db = atr.AttractorDB(db_path = '../data/henon_attractor.h5', func = henon,
 #henon_db.add_new_paths(num_paths = 1, length = 1000)
 #henon_db.plot_path2D(9)
 henon_db.add_new_pts()
-henon_db.collect_seeds()
+henon_db.collect_seeds(num_seeds = 100)
 henon_db.tessellate()

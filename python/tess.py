@@ -1,5 +1,5 @@
 import scipy.spatial as ss
-import polytope as pc
+#import polytope as pc
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as pat
@@ -14,6 +14,42 @@ class VoronoiTess:
         self.tess = ss.Voronoi(points)
         ss.voronoi_plot_2d(self.tess)
         #plt.show()
+
+    def plot(self, ax=None, alpha=0.5, linewidth=0.7, saveas=None, show=True):
+        # Configure plot
+        if ax is None:
+            plt.figure(figsize=(5,5))
+            ax = plt.subplot(111)
+        # Remove ticks
+        ax.set_xticks([])
+        ax.set_yticks([])
+        #ax.axis("equal")
+        # Set limits
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        polygons = []
+
+        alpha_shape = al.alphashape(self.pts, 2.0)
+        boundary = list(dc.PolygonPatch(alpha_shape).__dict__['_path'].__dict__['_vertices'])
+        bdry_idx = [np.where(self.pts == vertex[0])[0][0] for vertex in boundary]
+        """
+        fig, ax1 = plt.subplots()
+        ax1.scatter(*zip(*points))
+        ax1.add_patch(dc.PolygonPatch(alpha_shape, alpha=2.0))
+        plt.show()
+        """
+        # Add polygons
+        for reg in self.tess.regions:
+            polygon = [self.tess.vertices[i] for i in reg]
+            if True:#np.all(polygon != -1.0):
+                ax.fill(*zip(*polygon), alpha=0.4)
+
+        #ax.scatter(self.pts[:, 0], self.pts[:, 1])
+        if show:
+            plt.show()
+        if saveas is not None:
+            plt.savefig(saveas)
+        return ax
 
     def plot_polygons(self, ax=None, alpha=0.5, linewidth=0.7, saveas=None, show=True):
         # Configure plot
@@ -38,7 +74,7 @@ class VoronoiTess:
         """
         alpha_shape = al.alphashape(self.pts, 2.0)
         boundary = list(dc.PolygonPatch(alpha_shape).__dict__['_path'].__dict__['_vertices'])
-        bdry_idx = [np.where(points == vertex[0])[0][0] for vertex in boundary]
+        bdry_idx = [np.where(self.pts == vertex[0])[0][0] for vertex in boundary]
         """
         fig, ax1 = plt.subplots()
         ax1.scatter(*zip(*points))

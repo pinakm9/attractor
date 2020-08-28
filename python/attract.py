@@ -6,6 +6,7 @@ import tables
 import utility as ut
 import os
 import tess
+import scipy.spatial as ss
 
 class AttractorDB:
     """
@@ -220,7 +221,7 @@ class AttractorDB:
         """
         hdf5 = tables.open_file(self.db_path, 'a')
         description = {'index': tables.Int32Col(pos=0)}
-        ints = np.random.randint(hdf5.root.points.shape[0], size=num_seeds)
+        ints = np.random.choice(hdf5.root.points.shape[0], size=num_seeds, replace=False)
         try:
             hdf5.remove_node(hdf5.root.seeds)
         except:
@@ -247,11 +248,14 @@ class AttractorDB:
         vt = tess.VoronoiTess(points[idx].tolist())
         hdf5.create_group(hdf5.root, 'Voronoi')
         for cell_id, region in enumerate(vt.tess.regions):
-            cell = hdf5.create_table(hdf5.root.Voronoi, 'cell_' + str(cell_id), self.point_description)
-            print(vt.tess.vertices[region])
-            cell.append(vt.tess.vertices[region])
-            cell.flush()
+            if len(region) > 0 and -1 not in region:
+                cell = hdf5.create_table(hdf5.root.Voronoi, 'cell_' + str(idx[cell_id]), self.point_description)
+                cell.append(vt.tess.vertices[region])
+                cell.flush()
         hdf5.close()
+        #ss.voronoi_plot_2d(vt.tess, show_vertices=False)
+        #vt.plot()
+        #plt.show()
 
     def plot_path2D(self, path_index, show=True, saveas=None):
         """
