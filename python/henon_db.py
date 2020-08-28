@@ -9,5 +9,6 @@ def henon(x, a, b):
 henon_db = atr.AttractorDB(db_path = '../data/henon_attractor.h5', func = henon, dim = 2, a = 1.4, b = 0.3)
 #henon_db.add_new_paths(num_paths = 1, length = 1000)
 #henon_db.plot_path2D(9)
-#henon_db.add_new_pts()
+henon_db.add_new_pts()
 henon_db.collect_seeds()
+henon_db.tessellate()

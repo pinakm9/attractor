@@ -9,7 +9,7 @@ import descartes as dc
 
 class VoronoiTess:
 
-    def __init__(self, points, region = None):
+    def __init__(self, points):
         self.pts = points
         self.tess = ss.Voronoi(points)
         ss.voronoi_plot_2d(self.tess)
@@ -144,7 +144,7 @@ class VoronoiTess:
         return new_regions, np.asarray(new_vertices)
 
 
-
+"""
 points = np.array([[0.24886105, 0.14452593],
        [0.6824991 , 0.70051654],
        [0.67251442, 0.66597723],
@@ -168,4 +168,5 @@ points = np.array([[0.24886105, 0.14452593],
 
 vt = VoronoiTess(points)
 vt.plot_polygons(saveas = '../images/color_vor.png')
-print(vt.tess.point_region)
+print(vt.tess.vertices)
+"""

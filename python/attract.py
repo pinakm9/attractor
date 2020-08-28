@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import tables
 import utility as ut
 import os
+import tess
 
 class AttractorDB:
     """
@@ -27,6 +28,7 @@ class AttractorDB:
         burn_in: moves a point forward in time for a long enough period for it to reach the attractor
         plot_path2D: plots an existing trajectory using only the first two coordinates
         collect_seeds: randomly collects seeds (indices of attractor points) for Voronoi tessellation and saves them in the seeds group
+        tessellate: creates Voronoi tessellation from the seeds and saves it
     """
 
     def __init__(self, db_path, func, dim, **params):
@@ -194,7 +196,7 @@ class AttractorDB:
                 reset = int(1e3)
         """
         hdf5 = tables.open_file(self.db_path, 'a')
-        points = getattr(hdf5.root, 'points')
+        points = hdf5.root.points
         if num_pts < 1e3:
             reset = num_pts
         elif reset is None:
@@ -212,6 +214,7 @@ class AttractorDB:
         """
         Description:
             Randomly collects seeds (indices of attractor points) for Voronoi tessellation and saves them in the seeds group
+
         Args:
             num_seeds: number of seeds to be collected
         """
@@ -219,8 +222,7 @@ class AttractorDB:
         description = {'index': tables.Int32Col(pos=0)}
         ints = np.random.randint(hdf5.root.points.shape[0], size=num_seeds)
         try:
-            seeds = getattr(hdf5.root, 'seeds')
-            seeds.remove()
+            hdf5.remove_node(hdf5.root.seeds)
         except:
             pass
         seeds = hdf5.create_table(hdf5.root, 'seeds', description)
@@ -228,6 +230,28 @@ class AttractorDB:
         seeds.flush()
         hdf5.close()
 
+    @ut.timer
+    def tessellate(self):
+        """
+        Description:
+            Creates Voronoi tessellation from the seeds and saves it
+        """
+        hdf5 = tables.open_file(self.db_path, 'a')
+        try:
+            hdf5.remove_node(where=hdf5.root, name='Voronoi', recursive=True)
+        except:
+            pass
+        seeds = hdf5.root.seeds
+        points = hdf5.root.points
+        idx = np.array(seeds.read().tolist(), dtype='int32').flatten()
+        vt = tess.VoronoiTess(points[idx].tolist())
+        hdf5.create_group(hdf5.root, 'Voronoi')
+        for cell_id, region in enumerate(vt.tess.regions):
+            cell = hdf5.create_table(hdf5.root.Voronoi, 'cell_' + str(cell_id), self.point_description)
+            print(vt.tess.vertices[region])
+            cell.append(vt.tess.vertices[region])
+            cell.flush()
+        hdf5.close()
 
     def plot_path2D(self, path_index, show=True, saveas=None):
         """
