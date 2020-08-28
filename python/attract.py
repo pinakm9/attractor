@@ -1,80 +1,201 @@
+# Implements class(es) for creating attractor database for a dynamical system
+
 import numpy as np
 import matplotlib.pyplot as plt
 import tables
 import utility as ut
+import os
 
-# the Henon map
-def henon(x, a = 1.4, b = 0.3):
-    return np.array([1.0  - a*x[0]**2 + x[1], b*x[0]])
+class AttractorDB:
+    """
+    Description:
+        A class for creating/editing attractor database of a dynamical system
 
-# generates a trajectory
-@ut.timer
-def gen_path(func, start, length, dimension, **params):
-    path = np.zeros((dimension, length))
-    x = start
-    for t in range(length):
-        res = func(x, **params)
-        path[:, t] = res
-        x = res
-    return path
+    Attrs:
+        db_path: database file path
+        func: dynamical function
+        dim: dimension of the dynamical system
+        params: dict of keyword arguments for the dynamical function
+        num_paths: current number of trajectories in the database
 
-# plots a trajectory
-def plot_path(path):
-    fig, ax = plt.subplots(figsize=(8,8))
-    ax.scatter(path[0, :], path[1, :], color = 'orange', s = 0.2)
-    plt.show()
+    Methods:
+        gen_path: generates a new trajectory
+        add_new_paths: adds new trajectories of equal length to the database
+        add_to_path: extends an already existing trajectory in the database
+        burn_in: moves a point forward in time for a long enough period for it to reach the attractor
+        plot_path2D: plots an existing trajectory using only the first two coordinates
+    """
 
-# generates a trajectory and goes through "burn-in" period to get to the attractor
-def burn_in(func, start, length, dimension, **params):
-    path = gen_path(func, start, length, dimension, **params)
-    plot_path(path)
-    with open('../data/burn_in.txt', 'a') as burn_in_file:
-        burn_in_file.write('map: {} \t parameters: {} \t starting point: {} \t burn-in period: {} \t point on attractor: {}\n'.format(func.__name__, params, start, length, path[:, -1]))
+    def __init__(self, db_path, func, dim, **params):
+        """
+        Args:
+            db_path: database file path
+            func: dynamical function
+            dim: dimension of the dynamical system
+            **params: dict of keyword arguments for the dynamical function
+        """
+        # initializes database to store attractor data
+        if not os.path.isfile(db_path):
+            hdf5 = tables.open_file(db_path, 'w')
+            trajectories = hdf5.create_group('/', 'trajectories')
+            self.num_paths = 0
+            hdf5.close()
+        else:
+            # figure out number of trajectories in a non-empty database
+            hdf5 = tables.open_file(db_path, 'a')
+            idx = [int(path_name.split('_')[-1]) for path_name in hdf5.root.trajectories._v_children]
+            self.num_paths = max(idx) if len(idx) > 0 else 0
+            hdf5.close()
 
-# find a point on the attractor of the Henon map
-"""
-a, b = 1.4, 0.3
-burn_in(func = henon, start = [(1.0-b)/2.0, (1.0-b)/2.0], length = 50000, dimension = 2, a = a, b = b)
-"""
+        self.db_path = db_path
+        self.func = func
+        self.dim = dim
+        self.params = params
 
-# initializes database to store attractor data
-def init_database(db_path):
-    hdf5 = tables.open_file(db_path, 'w')
-    trajectories = hdf5.create_group('/', 'trajectories')
-    hdf5.close()
+    @ut.timer
+    def gen_path(self, start, length):
+        """
+        Description:
+            Generates a new trajectory
 
-# addes a new trajectory in the attractor database
-@ut.timer
-def add_new_path(db_path, path_index, func, start, length, dimension, chunk_size, **params):
-    path_description = {}
-    for i in range(dimension):
-        path_description['x' + str(i)] = tables.Float32Col(pos = i)
-    hdf5 = tables.open_file(db_path, 'a')
-    trajectory = hdf5.create_table(hdf5.root.trajectories, 'trajectory_' + str(path_index), path_description)
-    for i in range(int(length/chunk_size)):
-        path = gen_path(func, start, length, dimension, **params)
-        trajectory.append(path.T)
-        trajectory.flush()
-        start = path[:, -1]
-        print('Chunk #{} has been written.'.format(i))
-    hdf5.close()
+        Args:
+            start: the point to start from
+            length: amount of time the point is to be moved according to the dynamics or the length of the trajectory
 
-# adds to an existing trajectory in the attractor database
-@ut.timer
-def add_to_path(db_path, path_index, func, length, dimension, chunk_size, **params):
-    hdf5 = tables.open_file(db_path, 'a')
-    trajectory = getattr(hdf5.root.trajectories, 'trajectory_' + str(path_index))
-    start = np.array(list(trajectory[-1]), dtype = 'float32')
-    for i in range(int(length/chunk_size)):
-        path = gen_path(func, start, length, dimension, **params)
-        trajectory.append(path.T)
-        trajectory.flush()
-        start = path[:, -1]
-        print('Chunk #{} has been written.'.format(i))
-    hdf5.close()
+        Returns:
+            the generated trajectory as a numpy array
+        """
+        path = np.zeros((self.dim, length))
+        x = start
+        for t in range(length):
+            res = self.func(x, **self.params)
+            path[:, t] = res
+            x = res
+        return path
 
-init_database('../data/henon_attractor.h5')
-add_new_path(db_path = '../data/henon_attractor.h5', path_index = 0, func = henon, start = [0.13916694, -0.27812755], length = int(8e6), dimension = 2, chunk_size = int(1e4), a = 1.4, b = 0.3)
-#add_to_path(db_path = '../data/henon_attractor.h5', path_index = 0, func = henon, length = int(8e6), dimension = 2, chunk_size = int(1e4), a = 1.4, b = 0.3)
-#hdf5 = tables.open_file('../data/henon_attractor.h5', 'a')
-#print(hdf5.root.trajectories.trajectory_0.__len__())
+    @ut.timer
+    def burn_in(self, start='random', burn_in_period=int(1e5), mean=None, cov=0.001):
+        """
+        Description:
+            Moves a point forward in time for a long enough period for it to reach the attractor
+
+        Args:
+            start: the point to start from, default = 'random' in which case a random point from a normal distribution will be selected
+            burn_in_period: amount of time the point is to be moved according to the dynamics, default = 10,000
+            mean: mean of the normal distribution from which the starting point is to be selected, default = None which means trajectory will start at zero vector
+            cov: cov*Identity is the covarience of the normal distribution from which the starting point is to be selected, default = 0.01
+
+        Returns:
+            the final point on the attractor
+        """
+        if self.dim > 1:
+            if mean is None:
+                mean = np.zeros(self.dim)
+        else:
+            if mean is None:
+                mean = 0.0
+
+        def new_start():
+            print('Invalid starting point, generatimng new random starting point ...')
+            return np.random.multivariate_normal(mean, cov*np.eye(self.dim)) if self.dim > 1 else np.random.normal(mean, cov)
+        if start is 'random':
+            start = new_start()
+        end_pt = self.gen_path(start, burn_in_period)[:, -1]
+        while np.any(np.isinf(end_pt)):
+            end_pt = self.gen_path(new_start(), burn_in_period)[:, -1]
+        return end_pt
+
+
+    @ut.timer
+    def add_new_paths(self, num_paths=1, start='random', length=int(1e3), chunk_size=None):
+        """
+        Description:
+            Adds new trajectories of same length to the database
+
+        Args:
+            num_paths: number of new trajectories to be added
+            start: the list of points to start from, deafult = 'random' in which case random starting points will be created via burn_in
+            length: amount of time the point is to be moved according to the dynamics or the length of the trajectories, default = int(1e3)
+            chunk_size: portion of the trajectory to be wriiten to the database at a time, default = None, behaves as,
+            if length < 1e4:
+                chunk_size = length
+            elif chunk_size is None:
+                chunk_size = int(1e4)
+        """
+        path_description = {}
+        for i in range(self.dim):
+            path_description['x' + str(i)] = tables.Float64Col(pos = i)
+        hdf5 = tables.open_file(self.db_path, 'a')
+        if length < 1e4:
+            chunk_size = length
+        elif chunk_size is None:
+            chunk_size = int(1e4)
+        if start is 'random':
+            start = [self.burn_in() for i in range(num_paths)]
+            #print(start)
+        for i in range(num_paths):
+            self.num_paths += 1
+            trajectory = hdf5.create_table(hdf5.root.trajectories, 'trajectory_' + str(self.num_paths), path_description)
+            origin = start[i]
+            for i in range(int(length/chunk_size)):
+                path = self.gen_path(origin, length)
+                trajectory.append(path.T)
+                trajectory.flush()
+                origin = path[:, -1]
+                print('Chunk #{} has been written.'.format(i))
+        hdf5.close()
+
+    @ut.timer
+    def add_to_path(self, path_index, length=int(1e3), chunk_size=None):
+        """
+        Description:
+            Extends an already existing trajectory in the database
+
+        Args:
+            path_index: index of the path to be extended
+            length: amount of time the point is to be moved according to the dynamics or the length of the trajectory, default = int(1e3)
+            chunk_size: portion of the trajectory to be wriiten to the database at a time, default = None, behaves as,
+            if length < 1e4:
+                chunk_size = length
+            elif chunk_size is None:
+                chunk_size = int(1e4)
+        """
+        hdf5 = tables.open_file(self.db_path, 'a')
+        trajectory = getattr(hdf5.root.trajectories, 'trajectory_' + str(path_index))
+        if length < 1e4:
+            chunk_size = length
+        elif chunk_size is None:
+            chunk_size = int(1e4)
+        start = np.array(list(trajectory[-1]), dtype = 'float64')
+        for i in range(int(length/chunk_size)):
+            path = self.gen_path(start, length)
+            trajectory.append(path.T)
+            trajectory.flush()
+            start = path[:, -1]
+            print('Chunk #{} has been written.'.format(i))
+        hdf5.close()
+
+
+    def plot_path2D(self, path_index, show=True, saveas=None):
+        """
+        Description:
+            Plots a trajectory in the database using only the first two coordinates
+
+        Args:
+            path_index: index of the path to be plottted
+            show: boolean flag to determine if the plot is to be shown, default = True
+            saveas: file path for saving the plot, default = None in which case the plot won't be saved
+
+        Returns:
+            ax of the generated plot
+        """
+        plt.figure(figsize=(8,8))
+        ax = plt.subplot(111)
+        hdf5 = tables.open_file(self.db_path, 'a')
+        trajectory = np.array(getattr(hdf5.root.trajectories, 'trajectory_' + str(path_index)).read().tolist(), dtype = 'float64')
+        ax.scatter(trajectory[:, 0], trajectory[:, 1], color = 'orange', s = 0.2)
+        if show:
+            plt.show()
+        if saveas is not None:
+            plt.savefig(saveas)
+        return ax

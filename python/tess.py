@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as pat
 import utility as ut
+import alphashape as al
+import descartes as dc
 
 class VoronoiTess:
 
@@ -34,10 +36,20 @@ class VoronoiTess:
             ax.fill(*zip(*polygon), alpha=0.4)
         print(len(polygons))
         """
-
+        alpha_shape = al.alphashape(self.pts, 2.0)
+        boundary = list(dc.PolygonPatch(alpha_shape).__dict__['_path'].__dict__['_vertices'])
+        bdry_idx = [np.where(points == vertex[0])[0][0] for vertex in boundary]
+        """
+        fig, ax1 = plt.subplots()
+        ax1.scatter(*zip(*points))
+        ax1.add_patch(dc.PolygonPatch(alpha_shape, alpha=2.0))
+        plt.show()
+        """
         # Add polygons
         regions, vertices = self.voronoi_finite_polygons_2d()
-        for reg in regions:
+        for pt, reg in enumerate(regions):
+            if pt in bdry_idx:
+                continue
             poly = vertices[reg]
             colored_cell = pat.Polygon(poly, linewidth=linewidth, alpha=alpha, facecolor=ut.random_color(as_str=False, alpha=1), edgecolor="black") #
             ax.add_patch(colored_cell)
@@ -85,10 +97,12 @@ class VoronoiTess:
             all_ridges.setdefault(p1, []).append((p2, v1, v2))
             all_ridges.setdefault(p2, []).append((p1, v1, v2))
 
+
+
+
         # Reconstruct infinite regions
         for p1, region in enumerate(self.tess.point_region):
             vertices = self.tess.regions[region]
-
             if all(v >= 0 for v in vertices):
                 # finite region
                 new_regions.append(vertices)
@@ -151,6 +165,7 @@ points = np.array([[0.24886105, 0.14452593],
        [0.25161305, 0.82164982],
        [0.17503043, 0.38474403],
        [0.52406975, 0.88047603]])
+
 vt = VoronoiTess(points)
 vt.plot_polygons(saveas = '../images/color_vor.png')
-print(vt.tess.regions)
+print(vt.tess.point_region)
