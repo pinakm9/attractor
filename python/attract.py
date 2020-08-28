@@ -26,6 +26,7 @@ class AttractorDB:
         add_to_path: extends an already existing trajectory in the database
         burn_in: moves a point forward in time for a long enough period for it to reach the attractor
         plot_path2D: plots an existing trajectory using only the first two coordinates
+        collect_seeds: randomly collects seeds (indices of attractor points) for Voronoi tessellation and saves them in the seeds group
     """
 
     def __init__(self, db_path, func, dim, **params):
@@ -137,7 +138,7 @@ class AttractorDB:
         elif chunk_size is None:
             chunk_size = int(1e4)
         if start is 'random':
-            start = [self.burn_in(burn_in_period = burn_in_period, mean = mean, cov = cov) for i in range(num_paths)]
+            start = [self.burn_in(burn_in_period=burn_in_period, mean=mean, cov=cov) for i in range(num_paths)]
         for i in range(num_paths):
             self.num_paths += 1
             trajectory = hdf5.create_table(hdf5.root.trajectories, 'trajectory_' + str(self.num_paths), self.point_description)
@@ -184,12 +185,13 @@ class AttractorDB:
     @ut.timer
     def add_new_pts(self, num_pts=int(1e3), reset=None, burn_in_period=int(1e5), mean=None, cov=0.001):
         """
-        num_pts: number of new points to be added, default=int(1e3)
-        reset: number of points before the starting point resets, default = None, behaves as,
-        if num_pts < 1e3:
-            reset = num_pts
-        elif reset is None:
-            reset = int(1e3)
+        Args:
+            num_pts: number of new points to be added, default=int(1e3)
+            reset: number of points before the starting point resets, default = None, behaves as,
+            if num_pts < 1e3:
+                reset = num_pts
+            elif reset is None:
+                reset = int(1e3)
         """
         hdf5 = tables.open_file(self.db_path, 'a')
         points = getattr(hdf5.root, 'points')
@@ -198,7 +200,7 @@ class AttractorDB:
         elif reset is None:
             reset = int(1e3)
         for i in range(int(num_pts/reset)):
-            start = self.burn_in(burn_in_period = burn_in_period, mean = mean, cov = cov)
+            start = self.burn_in(burn_in_period=burn_in_period, mean=mean, cov=cov)
             path = self.gen_path(start, reset)
             points.append(path.T)
             points.flush()
@@ -207,8 +209,24 @@ class AttractorDB:
 
     @ut.timer
     def collect_seeds(self, num_seeds=int(1e3)):
-        pass
-
+        """
+        Description:
+            Randomly collects seeds (indices of attractor points) for Voronoi tessellation and saves them in the seeds group
+        Args:
+            num_seeds: number of seeds to be collected
+        """
+        hdf5 = tables.open_file(self.db_path, 'a')
+        description = {'index': tables.Int32Col(pos=0)}
+        ints = np.random.randint(hdf5.root.points.shape[0], size=num_seeds)
+        try:
+            seeds = getattr(hdf5.root, 'seeds')
+            seeds.remove()
+        except:
+            pass
+        seeds = hdf5.create_table(hdf5.root, 'seeds', description)
+        seeds.append(ints)
+        seeds.flush()
+        hdf5.close()
 
 
     def plot_path2D(self, path_index, show=True, saveas=None):
