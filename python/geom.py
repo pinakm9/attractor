@@ -1,20 +1,20 @@
 import scipy.spatial as ss
-#import polytope as pc
+import polytope as pc
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as pat
 import utility as ut
 import alphashape as al
-import descartes as dc
 
 class VoronoiTess:
 
     def __init__(self, points):
         self.pts = points
         self.tess = ss.Voronoi(points)
+        """1
         ss.voronoi_plot_2d(self.tess)
-        #plt.show()
-
+        plt.show()
+        """
     def plot(self, ax=None, alpha=0.5, linewidth=0.7, saveas=None, show=True):
         # Configure plot
         if ax is None:
@@ -200,9 +200,24 @@ points = np.array([[0.24886105, 0.14452593],
        [0.41370299, 0.70900939],
        [0.25161305, 0.82164982],
        [0.17503043, 0.38474403],
-       [0.52406975, 0.88047603]])
+       [0.52406975, 0.88047603],
+       [99999., -99999.],
+       [-99999., 99999.],
+       [99999.,99999.],
+       [-99999., -99999.]
+      ])
+
 
 vt = VoronoiTess(points)
-vt.plot_polygons(saveas = '../images/color_vor.png')
-print(vt.tess.vertices)
+#vt.plot_polygons(saveas = '../images/color_vor.png')
+print(vt.tess.regions)
+print(len(vt.tess.regions))
+print(vt.tess.point_region)
+print(len(vt.tess.point_region))
 """
+def pts_to_poly(points):
+    hull = ss.ConvexHull(points)
+    dim = np.array(points).shape[1]
+    A = hull.equations[:, 0: dim]
+    b = -hull.equations[:, dim]
+    return pc.Polytope(A, b)

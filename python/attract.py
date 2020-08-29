@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import tables
 import utility as ut
 import os
-import tess
+import geom
 import scipy.spatial as ss
 
 class AttractorDB:
@@ -30,6 +30,7 @@ class AttractorDB:
         plot_path2D: plots an existing trajectory using only the first two coordinates
         collect_seeds: randomly collects seeds (indices of attractor points) for Voronoi tessellation and saves them in the seeds group
         tessellate: creates Voronoi tessellation from the seeds and saves it
+        assign_pts_to_cells: assigns points to Voronoi cells
     """
 
     def __init__(self, db_path, func, dim, **params):
@@ -51,7 +52,7 @@ class AttractorDB:
 
         if not os.path.isfile(db_path):
             hdf5 = tables.open_file(db_path, 'w')
-            trajectories = hdf5.create_group('/', 'trajectories')
+            hdf5.create_group('/', 'trajectories')
             points = hdf5.create_table(hdf5.root, 'points', self.point_description)
             points.flush()
             self.num_paths = 0
@@ -232,10 +233,13 @@ class AttractorDB:
         hdf5.close()
 
     @ut.timer
-    def tessellate(self):
+    def tessellate(self, image_path=None):
         """
         Description:
             Creates Voronoi tessellation from the seeds and saves it
+
+        Args:
+            image_path: path of the image ending in the filename to save 2D Voronoi diagram
         """
         hdf5 = tables.open_file(self.db_path, 'a')
         try:
@@ -245,17 +249,47 @@ class AttractorDB:
         seeds = hdf5.root.seeds
         points = hdf5.root.points
         idx = np.array(seeds.read().tolist(), dtype='int32').flatten()
-        vt = tess.VoronoiTess(points[idx].tolist())
+        vt = geom.VoronoiTess(points[idx].tolist())
         hdf5.create_group(hdf5.root, 'Voronoi')
-        for cell_id, region in enumerate(vt.tess.regions):
-            if len(region) > 0 and -1 not in region:
-                cell = hdf5.create_table(hdf5.root.Voronoi, 'cell_' + str(idx[cell_id]), self.point_description)
-                cell.append(vt.tess.vertices[region])
-                cell.flush()
+        for i, region in enumerate(vt.tess.point_region):
+            if region > 0:
+                ver_idx = vt.tess.regions[region]
+                if len(ver_idx) > 0 and -1 not in ver_idx:
+                    cell = hdf5.create_table(hdf5.root.Voronoi, 'cell_' + str(idx[i]), self.point_description)
+                    cell.append(vt.tess.vertices[ver_idx])
+                    cell.flush()
         hdf5.close()
-        #ss.voronoi_plot_2d(vt.tess, show_vertices=False)
-        #vt.plot()
-        #plt.show()
+        if self.dim == 2 and image_path is not None:
+            ss.voronoi_plot_2d(vt.tess, show_vertices=False)
+            plt.savefig(image_path)
+
+    @ut.timer
+    def assign_pts_to_cells(self):
+        """
+        Description:
+            Assigns points to Voronoi cells
+        """
+        hdf5 = tables.open_file(self.db_path, 'a')
+        try:
+            hdf5.remove_node(where=hdf5.root, name='allotments', recursive=True)
+        except:
+            pass
+        hdf5.create_group(hdf5.root, 'allotments')
+        for cell in hdf5.walk_nodes(hdf5.root.Voronoi, "Table"):
+            print(cell.name)
+            cell_bdry = cell.read().tolist()
+            polygon = geom.pts_to_poly(cell_bdry)
+            cell_pt_idx = []
+            for i, pt in enumerate(hdf5.root.points.read().tolist()):
+                if pt in polygon:
+                    cell_pt_idx.append(i)
+            cell_ = hdf5.create_table(hdf5.root.allotments, cell.name, {'index': tables.Int32Col(pos=0)})
+            cell_.append(np.array(cell_pt_idx, dtype='int32'))
+            cell_.flush()
+        hdf5.close()
+
+
+
 
     def plot_path2D(self, path_index, show=True, saveas=None):
         """
