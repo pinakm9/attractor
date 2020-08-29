@@ -289,8 +289,6 @@ class AttractorDB:
         hdf5.close()
 
 
-
-
     def plot_path2D(self, path_index, show=True, saveas=None):
         """
         Description:
@@ -314,3 +312,51 @@ class AttractorDB:
         if saveas is not None:
             plt.savefig(saveas)
         return ax
+
+
+class AttractorSampler:
+    """
+    Description:
+        Implements attractor sampling from an existing attractor database
+
+    Attrs:
+        db_path: path to attractor database
+        db: pyables object representing the root node in the database
+        seed_idx: indices of Voronoi seeds in the database
+        seeds: coordinates of Voronoi seeds in the database
+
+    Methods:
+        closest_seeds: finds seeds closest to given points
+
+    """
+    def __init__(self, db_path):
+        """
+        Args:
+            db_path: database file path
+        """
+        self.db_path = db_path
+        self.db = tables.open_file(self.db_path, 'r').root
+        self.seed_idx = self.db.seeds.read().tolist()
+        self.seeds = np.array(self.db.points.read().tolist(), dtype='float64')[self.seed_idx]
+        self.seeds = self.seeds.reshape((len(self.seed_idx), self.seeds.shape[-1]))
+
+    @ut.timer
+    def closest_seeds(self, pts):
+        """
+        Description:
+            Finds seeds closest to given points
+
+        Args:
+            pts: list of points whose closest seeds are to be found
+
+        Returns:
+            indices of the closest seeds
+        """
+        cl_seeds = np.zeros(len(pts), dtype='int32')
+        dist = np.zeros(len(self.seeds), dtype='float64')
+        for j, pt in enumerate(pts):
+            for i, seed in enumerate(self.seeds):
+                diff = np.array(pt) - seed
+                dist[i] = np.dot(diff, diff)
+            cl_seeds[j] = np.argmin(dist)
+        return cl_seeds
