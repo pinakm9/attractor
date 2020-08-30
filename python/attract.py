@@ -326,9 +326,11 @@ class AttractorSampler:
         seed_idx: indices of Voronoi seeds in the database
         seeds: coordinates of Voronoi seeds in the database
         dim: dimension of the points in the database
+        points: points in the attractor database
 
     Methods:
         closest_seeds: finds seeds closest to given points
+        sample_from_cells: randomly samples points from a list of Voronoi cells
 
     """
     def __init__(self, db_path):
@@ -343,6 +345,7 @@ class AttractorSampler:
         self.seeds = np.array(self.db.points.read().tolist(), dtype='float64')[self.seed_idx]
         self.dim = self.seeds.shape[-1]
         self.seeds = self.seeds.reshape((len(self.seed_idx), self.dim))
+        self.points = np.array(self.db.points.read().tolist(), dtype='float64')
 
     @ut.timer
     def closest_seeds(self, pts):
@@ -379,5 +382,7 @@ class AttractorSampler:
         """
         ensemble = np.zeros((len(cell_idx) * num_pts, self.dim), dtype='float64')
         for i, cell_id in enumerate(cell_idx):
-            ensemble[i: i + num_pts] = np.random.choice(getattr(self.db.allotments, 'cell_' + str(cell_id)).read().tolist(), size=num_pts)
+            allot = getattr(self.db.allotments, 'cell_' + str(cell_id)).read().tolist()
+            allot = np.array(allot, dtype='int32').flatten()
+            ensemble[i * num_pts: (i + 1) * num_pts] = self.points[np.random.choice(allot, size=num_pts)]
         return ensemble
