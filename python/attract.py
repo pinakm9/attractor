@@ -331,6 +331,7 @@ class AttractorSampler:
     Methods:
         closest_seeds: finds seeds closest to given points
         sample_from_cells: randomly samples points from a list of Voronoi cells
+        resample: replaces a list of points with points sampled from their closest Voronoi cells
 
     """
     def __init__(self, db_path):
@@ -384,5 +385,20 @@ class AttractorSampler:
         for i, cell_id in enumerate(cell_idx):
             allot = getattr(self.db.allotments, 'cell_' + str(cell_id)).read().tolist()
             allot = np.array(allot, dtype='int32').flatten()
-            ensemble[i * num_pts: (i + 1) * num_pts] = self.points[np.random.choice(allot, size=num_pts)]
+            ensemble[i*num_pts: (i+1)*num_pts] = self.points[np.random.choice(allot, size=num_pts)]
         return ensemble
+
+    @ut.timer
+    def resample(self, pts):
+        """
+        Description:
+            Replaces a list of points with points sampled from their closest Voronoi cells
+
+        Args:
+            pts: the list of points to be replaced
+
+        Returns:
+            list of replacement/resampled points
+        """
+        cell_idx = self.closest_seeds(pts)
+        return self.sample_from_cells(cell_idx)

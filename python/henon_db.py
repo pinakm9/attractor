@@ -16,6 +16,5 @@ henon_db.tessellate()
 henon_db.assign_pts_to_cells()
 """
 sampler = atr.AttractorSampler(db_path = '../data/henon_attractor.h5')
-cell_idx = sampler.closest_seeds(np.random.normal(size=(4, 2)))
-print(cell_idx)
-print(sampler.sample_from_cells(cell_idx, 3))
+pts = np.random.normal(size=(4, 2))
+print(sampler.resample(pts))
