@@ -348,7 +348,7 @@ class AttractorSampler:
         self.seeds = self.seeds.reshape((len(self.seed_idx), self.dim))
         self.points = np.array(self.db.points.read().tolist(), dtype='float64')
 
-    @ut.timer
+    #@ut.timer
     def closest_seeds(self, pts):
         """
         Description:
@@ -369,7 +369,7 @@ class AttractorSampler:
             cl_seeds[j] = self.seed_idx[np.argmin(dist)]
         return cl_seeds
 
-    @ut.timer
+    #@ut.timer
     def sample_from_cells(self, cell_idx, num_pts=1):
         """
         Description:
