@@ -228,7 +228,7 @@ class AttractorDB:
         except:
             pass
         seeds = hdf5.create_table(hdf5.root, 'seeds', description)
-        seeds.append(ints)
+        seeds.append(np.sort(ints))
         seeds.flush()
         hdf5.close()
 
@@ -275,8 +275,8 @@ class AttractorDB:
         except:
             pass
         hdf5.create_group(hdf5.root, 'allotments')
-        for cell in hdf5.walk_nodes(hdf5.root.Voronoi, "Table"):
-            print(cell.name)
+        for cell in hdf5.walk_nodes(hdf5.root.Voronoi, 'Table'):
+            print('Assigning points to {}'.format(cell.name))
             cell_bdry = cell.read().tolist()
             polygon = geom.pts_to_poly(cell_bdry)
             cell_pt_idx = []
@@ -321,9 +321,11 @@ class AttractorSampler:
 
     Attrs:
         db_path: path to attractor database
+        file: pytables file object representing the database
         db: pyables object representing the root node in the database
         seed_idx: indices of Voronoi seeds in the database
         seeds: coordinates of Voronoi seeds in the database
+        dim: dimension of the points in the database
 
     Methods:
         closest_seeds: finds seeds closest to given points
@@ -335,10 +337,12 @@ class AttractorSampler:
             db_path: database file path
         """
         self.db_path = db_path
-        self.db = tables.open_file(self.db_path, 'r').root
-        self.seed_idx = self.db.seeds.read().tolist()
+        self.file = tables.open_file(self.db_path, 'r')
+        self.db = self.file.root
+        self.seed_idx = [int(cell.name.split('_')[-1]) for cell in self.file.walk_nodes(self.db.Voronoi, 'Table')]
         self.seeds = np.array(self.db.points.read().tolist(), dtype='float64')[self.seed_idx]
-        self.seeds = self.seeds.reshape((len(self.seed_idx), self.seeds.shape[-1]))
+        self.dim = self.seeds.shape[-1]
+        self.seeds = self.seeds.reshape((len(self.seed_idx), self.dim))
 
     @ut.timer
     def closest_seeds(self, pts):
@@ -358,5 +362,22 @@ class AttractorSampler:
             for i, seed in enumerate(self.seeds):
                 diff = np.array(pt) - seed
                 dist[i] = np.dot(diff, diff)
-            cl_seeds[j] = np.argmin(dist)
+            cl_seeds[j] = self.seed_idx[np.argmin(dist)]
         return cl_seeds
+
+    @ut.timer
+    def sample_from_cells(self, cell_idx, num_pts=1):
+        """
+        Description:
+            Randomly samples points from a list of Voronoi cells
+        Args:
+            cells: list of indices to Voronoi cells from which points are to be sampled
+            num_pts: number of points to be sampled from each cell, default = 1
+
+        Returns:
+            list of randomly sampled points
+        """
+        ensemble = np.zeros((len(cell_idx) * num_pts, self.dim), dtype='float64')
+        for i, cell_id in enumerate(cell_idx):
+            ensemble[i: i + num_pts] = np.random.choice(getattr(self.db.allotments, 'cell_' + str(cell_id)).read().tolist(), size=num_pts)
+        return ensemble
