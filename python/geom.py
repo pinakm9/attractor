@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as pat
 import utility as ut
-import alphashape as al
+#import alphashape as al
 
 class VoronoiTess:
 
@@ -72,9 +72,11 @@ class VoronoiTess:
             ax.fill(*zip(*polygon), alpha=0.4)
         print(len(polygons))
         """
+        """
         alpha_shape = al.alphashape(self.pts, 2.0)
         boundary = list(dc.PolygonPatch(alpha_shape).__dict__['_path'].__dict__['_vertices'])
         bdry_idx = [np.where(self.pts == vertex[0])[0][0] for vertex in boundary]
+        """
         """
         fig, ax1 = plt.subplots()
         ax1.scatter(*zip(*points))
